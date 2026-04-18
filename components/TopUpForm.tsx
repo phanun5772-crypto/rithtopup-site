@@ -379,7 +379,7 @@ export default function TopUpForm({ game, products }: { game: Game; products: Pr
               {nicknameStatus === "not_found" && (
                 <span className="inline-flex items-center gap-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-3 py-1.5 text-sm text-yellow-300">
                   <AlertCircle className="h-4 w-4" strokeWidth={2} />
-                  Couldn&apos;t verify — double-check your UID
+                  Couldn&apos;t verify right now — you can still continue to pay
                 </span>
               )}
             </div>
