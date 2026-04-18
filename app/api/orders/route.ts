@@ -141,11 +141,12 @@ export async function POST(req: NextRequest) {
     });
 
     // Initiate payment with the gateway
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const requestOrigin = req.nextUrl.origin;
+    const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || requestOrigin).replace(/\/$/, "");
     // Prefer PUBLIC_APP_URL (tunnel/production domain) for gateway callbacks
     // so webhooks actually reach us. Falls back to baseUrl; the payment lib
     // strips localhost URLs automatically (the gateway refuses private IPs).
-    const publicUrl = process.env.PUBLIC_APP_URL || baseUrl;
+    const publicUrl = (process.env.PUBLIC_APP_URL || baseUrl).replace(/\/$/, "");
     const init = await initiatePayment({
       orderNumber: order.orderNumber,
       amountUsd: order.amountUsd,
