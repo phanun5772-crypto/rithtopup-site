@@ -84,7 +84,7 @@ A production-ready **Next.js 14** platform for selling in-game credits — with 
 
 ```
 Next.js 14 (App Router)  ·  React 18  ·  TypeScript (strict)
-Prisma 5  ·  SQLite (dev) / PostgreSQL (prod)
+Prisma 5  ·  PostgreSQL (dev + prod)
 Tailwind CSS 3  ·  lucide-react icons
 jose (JWT)  ·  bcryptjs  ·  pdfkit  ·  zod
 ```
@@ -119,6 +119,12 @@ ADMIN_PASSWORD="YourStrongPassword!"
 PAYMENT_SIMULATION_MODE="true"
 ```
 
+For Windows PowerShell, generate `JWT_SECRET` with:
+
+```powershell
+-join ((1..48) | ForEach-Object { [char[]](48..57+65..90+97..122) | Get-Random })
+```
+
 > 💡 Get a free Postgres URL in 30 seconds from [neon.tech](https://neon.tech) — pick **Create Project** and copy the connection string shown.
 
 ### 3. Set up the database
@@ -144,6 +150,72 @@ Open **http://localhost:3000/admin/login** — admin panel.
 
 ---
 
+## ✅ Full setup checklist (recommended)
+
+Use this sequence for first-time setup to avoid deployment and login errors.
+
+### A) Local development
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create `.env` from `.env.example` and set:
+    - `DATABASE_URL`
+    - `JWT_SECRET` (32+ chars)
+    - `ADMIN_EMAIL`
+    - `ADMIN_PASSWORD`
+    - `PAYMENT_SIMULATION_MODE=true` (for local testing)
+
+3. Initialize database:
+
+```bash
+npx prisma db push
+npm run db:seed
+```
+
+4. Start app:
+
+```bash
+npm run dev
+```
+
+5. Verify:
+    - Storefront: `http://localhost:3000`
+    - Admin login: `http://localhost:3000/admin/login`
+
+### B) Production (Vercel + Neon)
+
+1. Add all environment variables in Vercel (Production + Preview + Development).
+2. Ensure:
+    - `PAYMENT_SIMULATION_MODE=false`
+    - `KHPAY_API_KEY` is set
+    - `NEXT_PUBLIC_BASE_URL` and `PUBLIC_APP_URL` are your live domain
+3. From your laptop, run schema + seed against production DB:
+
+```bash
+# set DATABASE_URL to your production postgres url first
+npx prisma db push
+npm run db:seed
+```
+
+4. Redeploy Vercel without cache.
+5. Create a real test order and verify:
+    - QR appears (not simulation)
+    - Admin login works
+    - Order status updates
+
+### C) Security hardening (must-do)
+
+1. Rotate any leaked DB/API credentials immediately.
+2. Change seeded admin password after first login.
+3. Never commit `.env`.
+4. Keep `PAYMENT_SIMULATION_MODE=false` in production.
+
+---
+
 ## 🚀 Deploy to Vercel
 
 ### Step 1 — Create a Postgres database
@@ -163,7 +235,7 @@ Copy the connection string (must end with `?sslmode=require`).
 4. **Build Command:** leave as default (`npm run build`). Do **not** add `prisma db push` — run schema pushes from your laptop only.
 5. **Do not deploy yet** — add environment variables first ↓
 
-### Step 4 — Add environment variables
+### Step 3 — Add environment variables
 
 In **Vercel → Settings → Environment Variables**, add for **Production + Preview**:
 
@@ -181,6 +253,17 @@ In **Vercel → Settings → Environment Variables**, add for **Production + Pre
 | `PAYMENT_SIMULATION_MODE` | `false` |
 | `TELEGRAM_BOT_TOKEN` | *(optional)* for new-order notifications |
 | `TELEGRAM_CHAT_ID` | *(optional)* chat or channel ID |
+
+### Step 4 — Initialize production database
+
+From your local machine (with prod `DATABASE_URL`):
+
+```bash
+npx prisma db push
+npm run db:seed
+```
+
+> Do this once before first login. If you skip it, you can get errors like `public.Settings does not exist`.
 
 ### Step 5 — Deploy & configure KHPay webhook
 
@@ -228,7 +311,7 @@ JWT_SECRET="<32+ char random string>"
 ADMIN_EMAIL="admin@rithtopup.com"
 ADMIN_PASSWORD="ChangeMeNow123!"
 
-# KHPay (leave API key blank to use simulation mode)
+# KHPay
 KHPAY_BASE_URL="https://khpay.site/api/v1"
 KHPAY_API_KEY=""
 KHPAY_WEBHOOK_SECRET=""
@@ -238,8 +321,14 @@ NEXT_PUBLIC_BASE_URL="http://localhost:3000"
 PUBLIC_APP_URL=""                         # same as NEXT_PUBLIC_BASE_URL in prod
 
 # Dev flag
-PAYMENT_SIMULATION_MODE="true"            # auto-completes payments after 3s
+PAYMENT_SIMULATION_MODE="true"            # only set true for local simulation
 ```
+
+Behavior notes:
+
+- Simulation mode is enabled only when `PAYMENT_SIMULATION_MODE=true`.
+- If simulation is off and `KHPAY_API_KEY` is missing, order creation fails fast with config error.
+- In production keep simulation off and provide real KHPay credentials.
 
 ---
 
@@ -291,12 +380,43 @@ Did you run the seed on the production database? Connect locally with your prod 
 </details>
 
 <details>
+<summary><b>Admin login shows "JWT_SECRET must be set and at least 32 characters"</b></summary>
+
+Set `JWT_SECRET` in Vercel and make it at least 32 characters, then redeploy.
+</details>
+
+<details>
+<summary><b>Build/runtime error: "The table public.Settings does not exist"</b></summary>
+
+Your DB is connected but schema is not initialized. Run:
+
+```bash
+npx prisma db push
+npm run db:seed
+```
+
+against the same `DATABASE_URL` used by Vercel.
+</details>
+
+<details>
 <summary><b>KHPay QR expired / webhook never fires</b></summary>
 
 - The QR is **valid for 180 seconds** — this is a KHPay limit, not a bug.
 - Webhook URL in KHPay dashboard must be `https://your-domain/api/payment/webhook/khpay` (HTTPS, not localhost).
 - For local testing use a tunnel: `cloudflared tunnel --url http://localhost:3000` and set `PUBLIC_APP_URL` to the tunnel URL.
 - If the webhook doesn't reach you, the order-detail page auto-polls KHPay every 3 seconds — the order will still flip to PAID.
+</details>
+
+<details>
+<summary><b>Checkout redirects to localhost in production</b></summary>
+
+Set both `NEXT_PUBLIC_BASE_URL` and `PUBLIC_APP_URL` to your live domain (no trailing slash), then redeploy.
+</details>
+
+<details>
+<summary><b>Free Fire UID check says "Couldn't verify"</b></summary>
+
+Nickname lookup depends on a third-party validation API and can fail intermittently. Checkout still works; users can continue payment.
 </details>
 
 <details>
